@@ -1,0 +1,559 @@
+---
+jupyter:
+  jupytext:
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.0'
+      jupytext_version: 0.8.6
+  kernelspec:
+    display_name: Python 3
+    language: python
+    name: python3
+---
+
+## Write a Data Science Blog Post
+### War for talent! What companies need to do to  attract talent within software engineering. 
+
+
+With the help of the Stack Overflow Developer Survey from 2019 I want to answer the question, what companies need to do to attract talent within software engineering.
+For the analysis of the data set I will follwo the CRISP-DM Process (Cross Industry Process for Data Mining)
+
+
+### 1. Business Understanding
+
+
+During my time in an e-commerce Startup in Berlin, I quickly realized that biggest challenge for tech-driven Start-up is to find talented software engineers.
+In December of 2018 there was a shortage of 82.000 of IT specialists and according the german newspaper Handelsblatt, it takes in average 143 days to fill an open position.
+What must a company do to attract talent in this ongoing war for talent with this high demand for engineers? 
+How does developer think? What's important to them? Recruiter, HR and other decisions maker must understand how to create an work environment which is attractive to software engineers. 
+With the help of the Stack Overflow Developer Survey from 2019 I want to answer the question, what companies need to do to attract talent within software engineering.
+
+
+
+
+
+### 2. Data Understanding
+
+```{python}
+# importing the neccessary libaries
+import pandas as pd
+import seaborn as sns
+import numpy as np
+import matplotlib.pyplot as plt
+# %matplotlib inline
+from collections import defaultdict
+import statsmodels.api as sm
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+from patsy import dmatrices
+```
+
+### Loading the data -  2019 Stack Overflow Developer Survey.
+
+
+The data set is the full, cleaned results of the **2019 Stack Overflow Developer Survey**. Free response submissions and personally identifying information have been removed from the results to protect the privacy of respondents. There are two CSV files:
+
+
+1. survey_results_public.csv - CSV file with main survey results, one respondent per row and one column per answer
+2. survey_results_schema.csv - CSV file with survey schema, i.e., the questions that correspond to each column name
+
+```{python}
+# loading the dataset and the survey schema to the notebook
+survey_schmema = pd.read_csv('survey_results_schema.csv')
+survey_df = pd.read_csv('survey_results_public.csv')
+survey_df.head()
+```
+
+```{python}
+survey_schmema[survey_schmema['Column']=='CodeRevHrs']
+```
+
+```{python}
+#gettinga first overview about the data
+survey_df.shape
+```
+
+```{python}
+survey_df.info()
+```
+
+Now take a look at the summary statistics associated with the quantitative variables in your dataset. 
+
+```{python}
+survey_df.describe()
+```
+
+We can also see from the summary statistics that we have missing values
+
+```{python}
+survey_df.hist();
+```
+
+One can see that the age, hours spend on code revies (CodeRevHrs) and the Salary (CompTotal, ConvertedCommp) are right-skweded
+
+```{python}
+# creating a heatmap to see correlations between the quantitative variables
+sns.heatmap(survey_df.corr(), annot=True, fmt=".2f");
+```
+
+We can see the highest positive correlation between the compensations (Salary) and the Age, while the hours worked per week just seem to have weak correlation with the Salary
+
+
+#### What are the factors that influence Job and career satisfaction (CareerSat & JobSat)?
+
+```{python}
+#lets have a look at the two variables CareerSat & JobSat
+job_sat = survey_df.JobSat.value_counts(dropna=False)
+carrer_sat = survey_df.CareerSat.value_counts(dropna=False)
+(job_sat/survey_df.shape[0]*100)
+```
+
+```{python}
+#bar chart of the proportion of individuals in each category (from very satisfied to very dissatisfied) 
+(job_sat/survey_df.shape[0]*100).plot(kind='bar')
+plt.title('Proportion (%) Job satisfaction');
+```
+
+```{python}
+(carrer_sat/survey_df.shape[0]*100)
+```
+
+```{python}
+#bar chart of the proportion of individuals in each category (from very satisfied to very dissatisfied) 
+(carrer_sat/survey_df.shape[0]*100).plot(kind='bar')
+plt.title('Proportion (%) Carrer satisfaction');
+```
+
+The result show that the majority is satisified (very satisfied and sligthly satisfied) with their carrer (about 60%) but just the half (around 52%) of the participants is satisfied (very satisfied and sligthly satisfied) with their current job situation. 
+26% of the participant are dissatisfied with the current job, while 20% of the participants are dissatisified with their job.
+Interesting is also that around 20% didnt answer the question if their satisfied or dissatisfied with their job. 
+In the next step I would like to identify the main drivers for job satisfication resp. job dissatisfaction.
+
+```{python}
+#first I replace the strings with numerical values: from 1-5 (very dissatisfied- very satisfied) and save them in new column
+survey_df['JobSat_num'] = survey_df.JobSat.replace(['Very dissatisfied', 'Neither satisfied nor dissatisfied', 'Slightly dissatisfied', 'Slightly satisfied','Very satisfied'], [1, 2, 3, 4, 5])
+survey_df['CarrerSat_num'] = survey_df.CareerSat.replace(['Very dissatisfied', 'Neither satisfied nor dissatisfied', 'Slightly dissatisfied', 'Slightly satisfied','Very satisfied'], [1, 2, 3, 4, 5])
+```
+
+```{python}
+#sanity check 
+survey_df['JobSat_num'].head()
+```
+
+```{python}
+#sanity check 
+survey_df['CarrerSat_num'].head()
+```
+
+By looking at the survey I identified the following questions can be answered through the following variables:
+
+- What framework/ work environmet must a company offer to attract developer resp. which organisational environment makes them satisfied in terms of career and their job (Proxies: OrgSize, work remote, type of employment, compensation) ?
+- Does interest in the field make you a more happy developer (Proxies: Hobbies, Open Sourcer, Are people who code in their freetime are more happy?)
+- What managerial style (PurchaseWhat, manager compensation, work plan, confidence in Manager) 
+- what distractis them the most from work and which distraction makes the most dissatsiefied?
+
+
+### Which work environmet must a company offer to attract developer resp. which organisational environment makes them satisfied in terms of career and their job?
+
+```{python}
+survey_df.groupby(['Employment']).mean()['JobSat_num'].sort_values(ascending=False).dropna()
+```
+
+```{python}
+survey_df.groupby(['Employment']).mean()['CarrerSat_num'].sort_values(ascending=False).dropna()
+```
+
+The most satisfied with their job and carrer are delevopers that are employed full time
+
+```{python}
+survey_df.groupby(['OrgSize']).mean()['JobSat_num'].sort_values(ascending=False)
+```
+
+The job satisfaction seems in general not related with the organizatuon site. But its obvious that freelancer and developer in big companies are the most dissatisfied. 
+
+```{python}
+survey_df.groupby(['OrgSize']).mean()['CarrerSat_num'].sort_values(ascending=False)
+```
+
+The carrer satisfaction is higher in bigger companies and declines with the size of the company. 
+This is mostly likely due to the fact that bigger companies offers more carrer possibilites and have a more carrer steps
+
+```{python}
+survey_df.groupby(['WorkRemote']).mean()['JobSat_num'].sort_values(ascending=False)
+```
+
+The data shows that developer who works remot full-time are the most satisfied. From the ones that are work remotely full time, the ones that just works a few days remote are most satisfied.
+The ones that dont work remote are most dissatisfied
+
+```{python}
+survey_df.groupby(['WorkRemote']).mean()['CarrerSat_num'].sort_values(ascending=False)
+```
+
+On the other hand, the data for the carrer satisfaction is not so clear. 
+But rhe ones that dont work remote are most dissatisfied with their carrer
+
+```{python}
+survey_df.groupby('JobSat_num').mean()['ConvertedComp']
+```
+
+```{python}
+survey_df.groupby('CarrerSat_num').mean()['ConvertedComp']
+```
+
+You can see that the satisfaction in average rises with the compensation (carrer and job satisfaction).
+But the most interesting inside is that the compensation doesnt prevent employees from beign dissatisied. The ones that are most dissatisfied ('1') have a decent salary in average makes you more satisfied.
+
+
+Call for action for HR:
+- offer full-time employements
+- offer carrer possibilities and more carer steps
+- keep the spirit of small companies, flat hierachies
+
+
+### Does interest in the field of software engineering make you a more satisfied developer (Proxies: Hobbies, Open Sourcer) Are people who code in their freetime are more happy?
+
+```{python}
+survey_df.groupby(['Hobbyist']).mean()['JobSat_num'].sort_values(ascending=False)
+```
+
+```{python}
+survey_df.groupby(['Hobbyist']).mean()['CarrerSat_num'].sort_values(ascending=False)
+```
+
+```{python}
+survey_df.groupby(['OpenSourcer']).mean()['JobSat_num'].sort_values(ascending=False)
+```
+
+```{python}
+survey_df.groupby(['OpenSourcer']).mean()['CarrerSat_num'].sort_values(ascending=False)
+```
+
+Developer who code as a hobby and who contribute to open source projects more frequently are the more satisfied with their carrer and their current job situation 
+
+
+Call for action HR:
+- offer the possibility to work on passion projects and contribute to open source project for some hours under the working time
+
+
+### What managerial style is prefered by developers ?
+
+```{python}
+survey_df.groupby(['MgrIdiot']).mean()['JobSat_num'].sort_values(ascending=False)
+```
+
+```{python}
+survey_df.groupby(['MgrIdiot']).mean()['CarrerSat_num'].sort_values(ascending=False)
+```
+
+The shows that having confidence in Management is key for the satisfaction. In fact, its better to have no Manager than having a Manager that people dont have confidence in.
+
+```{python}
+survey_df.groupby(['WorkPlan']).mean()['JobSat_num'].sort_values(ascending=False)
+```
+
+```{python}
+survey_df.groupby(['WorkPlan']).mean()['CarrerSat_num'].sort_values(ascending=False)
+```
+
+On the other hand, developer appreciate if there is a shedule, work plan that they can follow. 
+The ones that dont a shedule or spec are the ones that are the most dissatisfied
+
+```{python}
+survey_df.groupby(['PurchaseWhat']).mean()['JobSat_num'].sort_values(ascending=False)
+```
+
+```{python}
+survey_df.groupby(['PurchaseWhat']).mean()['CarrerSat_num'].sort_values(ascending=False)
+```
+
+the more influence developer in purchasing descision, the more satisfied they are with their work
+
+
+Call for action HR:
+
+- install management team around IT that understands what they are doing.
+- its better to not having a manager than one that doesnt fit the team
+- Management has to estbalish a process flow where people than follow the shedule, but there needs to be space to variance
+- encourage managerial style, where employees have influence in decisions
+
+
+### What distracts developer the most from work and which factors are important when choosing a new job?
+
+```{python}
+# the variable work challenge (what are your greatest challenges to productivity as a developer) needs to be engineered in order ot draw conclusion from it
+# first I need identify the possible values
+possible_values_work_challenge = ['Distracting work environment', 'Being tasked with non-development work',
+                   'Meetings','Time spent commuting', 'Not enough people for the workload','Toxic work environment',
+                   'Inadequate access to necessary tools','Lack of support from management',
+                   'Non-work commitments (parenting, school work, hobbies, etc.)']
+```
+
+```{python}
+def total_count(df, col1, col2, look_for):
+    '''
+    INPUT:
+    df - the pandas dataframe you want to search
+    col1 - the column name you want to look through
+    col2 - the column you want to count values from
+    look_for - a list of strings you want to search for in each row of df[col]
+
+    OUTPUT:
+    new_df - a dataframe of each look_for with the count of how often it shows up
+    '''
+    new_df = defaultdict(int)
+    #loop through list of ed types
+    for val in look_for:
+        #loop through rows
+        for idx in range(df.shape[0]):
+            #if the ed type is in the row add 1
+            if val in df[col1][idx]:
+                new_df[val] += int(df[col2][idx])
+    new_df = pd.DataFrame(pd.Series(new_df)).reset_index()
+    new_df.columns = [col1, col2]
+    new_df.sort_values('count', ascending=False, inplace=True)
+    return new_df
+```
+
+```{python}
+def clean(df):
+    '''
+    INPUT 
+        df - a dataframe holding the CousinEducation column
+        
+    OUTPUT
+        study_df - a dataframe with the count of how many individuals
+      
+    '''
+    work_challenge =survey_df['WorkChallenge'].value_counts().reset_index()
+    work_challenge.rename(columns={'index': 'challenge', 'WorkChallenge': 'count'}, inplace=True)
+    work_challenge_df = total_count(work_challenge, 'challenge', 'count', possible_values_work_challenge)
+    work_challenge_df.set_index('challenge', inplace=True)
+    
+    return work_challenge_df
+
+work_challenge_df = clean(survey_df)
+```
+
+```{python}
+# top 3 challeges named in the question
+work_challenge_df[:3]
+```
+
+```{python}
+# the variable work challenge needs to be engineered in order ot draw conclusion from it
+# first I need identify the possible values
+possible_values_job_factors = ['Diversity of the company or organization', 'Diversity of the company or organization',
+                   'Industry that I’d be working in','How widely used or impactful my work output would be',
+                   'Specific department or team I’d be working on','Flex time or a flexible schedule',
+                   'Remote work options','Financial performance or funding status of the company or organization',
+                   'Office environment or company culture', 'Opportunities for professional development']
+```
+
+```{python}
+def clean(df):
+    '''
+    INPUT 
+        df - a dataframe holding the CousinEducation column
+        
+    OUTPUT
+        study_df - a dataframe with the count of how many individuals
+      
+    '''
+    job_factors =survey_df['JobFactors'].value_counts().reset_index()
+    job_factors.rename(columns={'index': 'factor', 'JobFactors': 'count'}, inplace=True)
+    job_factors_df = total_count(job_factors, 'factor', 'count', possible_values_job_factors)
+    job_factors_df.set_index('factor', inplace=True)
+    
+    return job_factors_df
+
+job_factors_df = clean(survey_df)
+```
+
+```{python}
+# top 3 factors for choosig a job named in the question
+job_factors_df[:3]
+```
+
+Call for action HR: 
+- create a good office environment
+- minimize meetings and non-development tasks- creating of support functions, so the developer can focus on their main tasks
+
+
+### 3. Prepare Data
+
+
+I want to use a multiple linear regression to see which factors have influence on the job resp. the carrer satisfaction - for this I need to first handle missing values (I dont wanna just drop them) and the categorical variables (create dummies)
+
+```{python}
+survey_schmema
+```
+
+I will include the following independent variables (x) in my regression:
+- Hobbyist
+- OpenSourcer
+- Employment
+- WorkRemote
+- ConvertedComp
+- OrgSize
+- MgrIdiot
+- WorkPlan
+- PurchaseWhat
+
+```{python}
+# creating a new df that just includes the variables that I want to have in the regression
+survey_reg = survey_df[["Respondent","Hobbyist", "OpenSourcer", "Employment", "WorkRemote", "ConvertedComp", "OrgSize", "MgrIdiot", "WorkPlan", "PurchaseWhat", "CarrerSat_num", "JobSat_num"]]
+# sanity check
+print(survey_reg.shape)
+```
+
+```{python}
+#set of columns that doesnt have missing values
+no_missing_values = set(survey_reg.columns[survey_reg.isnull().mean()==0])
+print('Just the following columns have no missing values: {}'.format(no_missing_values))
+```
+
+```{python}
+# lets have look at which coloums have the highest amount of missing data
+survey_reg.isnull().mean().sort_values(ascending=False)
+```
+
+```{python}
+# total amount of missing values in %
+survey_reg.isnull().mean().mean()*100
+print('Total amount of missing values in %: {}'.format((survey_reg.isnull().mean().mean()*100).round(2)))
+```
+
+```{python}
+# lets have a look at the columns that have more than 20% missing values
+over_20 = (survey_reg.columns[survey_reg.isnull().mean() > .2]).value_counts().sum()
+print('{} % of the columns ({} columns) have more than 20% missing values'.format(((over_20/survey_df.shape[1]* 100)).round(2), over_20))
+```
+
+I will in the next step take care of the missing values by imputing the missing numerical values
+
+
+### 3. Prepare Data
+
+```{python}
+# imputing the missing variables of the numerical variables with the mean
+
+# Mean function
+fill_mode = lambda col: col.fillna(col.mean()) # Mean function
+
+# Fill all missing values with the mean of the column.
+fill_survey_reg_num = survey_reg[['Respondent','ConvertedComp']].apply(fill_mode, axis=0) 
+
+# sanity check
+fill_survey_reg_num.head()
+```
+
+```{python}
+# imputing the missing variables of the categorical variables with the mean
+
+# Mean function
+fill_mode = lambda col: col.fillna(col.mode()[0]) # Mean function
+
+# Fill all missing values with the mean of the column.
+fill_survey_reg_cat = survey_reg[['JobSat_num','CarrerSat_num','MgrIdiot', 'PurchaseWhat', 'WorkRemote', 'OrgSize', 'Employment', 'OpenSourcer', 'Respondent', 'Hobbyist']].apply(fill_mode, axis=0)
+
+
+# sanity check
+fill_survey_reg_cat.isnull().mean()
+```
+
+```{python}
+# in the next step I need to create dummy variabels for the categorical variables in order to perform the regression
+fill_survey_reg_cat_dummies = pd.get_dummies(fill_survey_reg_cat, prefix_sep='_', drop_first=True)
+```
+
+```{python}
+# now I merge the two df fill_survey_reg_cat & fill_survey_reg_num into one df
+df_final = pd.concat([fill_survey_reg_num, fill_survey_reg_cat_dummies], axis=1)
+#dropping the respondents columns
+df_final = df_final.drop(df_final.Respondent, axis=1)
+#changing some column names in order to calculate the VIFs later
+df_final.rename(columns={"WorkRemote_All or almost all the time (I'm full-time remote)": "WorkRemote_All or almost all the time","WorkRemote_Less than once per month / Never": "WorkRemote_Less than once per month_Never", "OrgSize_Just me - I am a freelancer, sole proprietor, etc." : "OrgSize_Just me", "WorkRemote_It's complicated": "WorkRemote_Its complicated"}, inplace=True)
+#sanity check
+df_final.columns
+```
+
+### 4. Data Modeling
+
+
+### What correlates/ influences the most with the satisfication of emlpoyess?
+
+
+I will use a multiple regression to see which factors have influence on the job resp. the carrer satisfaction
+
+```{python}
+# since some coefficients were positiv where I would expect a negativ correlation I will check for Multicollinearity
+# get y and X dataframes based on this regression:
+y, X = dmatrices("JobSat_num ~  MgrIdiot + PurchaseWhat + WorkRemote + OrgSize + Employment + OpenSourcer + Hobbyist", fill_survey_reg_cat, return_type='dataframe')
+# For each X, calculate VIF and save in dataframe
+vif_job = pd.DataFrame()
+vif_job["VIF Factor"] = [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
+vif_job["features"] = X.columns
+vif_job
+```
+
+Based on the VIfs, I will remove the variable MgrIdiot from the regressions
+
+```{python}
+# dropping Mgridiot
+df_final = df_final.drop(['MgrIdiot_Not at all confident', 'MgrIdiot_Somewhat confident','MgrIdiot_Very confident', 'PurchaseWhat_I have little or no influence'], axis = 1)
+```
+
+```{python}
+# creating a df with just the x variables and a df with just the y variabels
+X = df_final.drop(df_final[['JobSat_num','CarrerSat_num']], axis=1)
+y_JobSat = df_final['JobSat_num']
+y_CarrerSat = df_final['CarrerSat_num']
+
+print(X.shape, y_JobSat.shape)
+X.columns
+```
+
+```{python}
+# add an intercept
+X['intercept'] = 1
+# predicting job satisfaction with multiple linear regression
+lm_job = sm.OLS(y_JobSat, X)
+#fit the model
+results_job = lm_job.fit()
+results_job.summary()
+```
+
+The low r-squared in both regressions (0.116 resp. 0.085) indicates that the regression doesnt fit the data very well. 
+
+```{python}
+# predicting Carrer satisfaction with multiple linear regression
+lm_carrer = sm.OLS(y_CarrerSat, X)
+#fit the model
+results_carrer = lm_carrer.fit()
+results_carrer.summary()
+```
+
+### 5. Evaluate the Results
+
+
+The low r-squared in both regressions (0.019 resp. 0.059) indicates that the regression doesnt fit the data very well. However, even when R-squared is low, low P values still indicate a real relationship between the significant predictors and the response variable(source: https://blog.minitab.com/blog/adventures-in-statistics-2/how-to-interpret-a-regression-model-with-low-r-squared-and-low-p-values). The regression shows that the compensation resp. the salary has the highest positive correlation with the job and carrer satisfaction.
+The results also show that working remote has a negative effect has a negative effect on the carrer and job satisfaction (all levels of working remote are negative or have no influence).
+Organization up to 99 employees have a postive effect on job satisifaction (rest no impact or negative).
+Organization up to 99 employees and organization over 10000 employees have a postive effect on carrer satisifaction (rest no impact or negative).
+As expected, contributing to open source and coding as a hobby have a positive effect on job and carrersatisfaction.
+The results for type of empolyment a little odd since every type of employment has a postive effect on job and carrer satisfaction- meaning basically that the type of employment doesnt really matter for the satisfaction
+
+
+### 6. Deploy- call for action for HR
+
+
+1. offer career possibilities and more carer steps
+3. keep the spirit of small companies, flat hierarchies
+4. offer the possibility to work on passion projects and contribute to open source project for some hours under the working time
+4. create a good office environment where people can work in a creative and calm environment
+5. minimize meetings and non-development tasks- creating of support functions, so the developer can focus on their main tasks
+6. offer competitive salaries- the salary has the highest positive influence on job and career satisfaction
+
+```{python}
+
+```
