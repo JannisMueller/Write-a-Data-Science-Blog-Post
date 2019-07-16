@@ -2,11 +2,11 @@
 ## With the help of the Stack Overflow Developer Survey from 2019 I want to answer the question, what companies need to do to attract talent within software engineering.
 
 ## Table of content
-1.Motivation
-2.Specifications
-3.Installation
-4.Results
-5.Licens
+- 1. Motivation
+- 2. Specifications
+- 3. Installation
+- 4. Results
+- 5. Licens
 
 # 1. Motivation
 In December of 2018 there was a shortage of 82.000 of IT specialists and according to the german newspaper Handelsblatt, it takes in average 143 days to fill an open position.
